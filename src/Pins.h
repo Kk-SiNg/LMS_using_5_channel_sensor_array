@@ -15,11 +15,11 @@
 
 // === SENSOR ARRAY (TCRT5000 5-Channel Digital) ===
 // Digital sensors: HIGH = line detected (black), LOW = no line (white)
-#define SENSOR_PIN_1 36  // Right-most sensor (INPUT ONLY - OK for digital read)
-#define SENSOR_PIN_2 39  // Right sensor (INPUT ONLY - OK for digital read)
-#define SENSOR_PIN_3 34  // Center sensor (INPUT ONLY - OK for digital read)
-#define SENSOR_PIN_4 35  // Left sensor (INPUT ONLY - OK for digital read)
-#define SENSOR_PIN_5 32  // Left-most sensor (Safe bidirectional pin)
+#define SENSOR_PIN_1 36
+#define SENSOR_PIN_2 39
+#define SENSOR_PIN_3 34
+#define SENSOR_PIN_4 35
+#define SENSOR_PIN_5 32
 
 const uint8_t SensorCount = 5;
 
@@ -45,7 +45,7 @@ const uint8_t SensorCount = 5;
 
 // === MISC ===
 #define ONBOARD_LED 2    // Built-in LED
-#define USER_BUTTON 15    // Boot button (shared with MOTOR_L_IN1, but INPUT_PULLUP mode during wait states)
+#define USER_BUTTON 15   // Boot button (shared with MOTOR_L_IN1, but INPUT_PULLUP mode during wait states so no problem)
 
 // === WIFI CONFIGURATION ===
 #define WIFI_SSID "Redmi A2"

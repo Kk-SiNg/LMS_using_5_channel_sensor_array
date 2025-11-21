@@ -39,10 +39,12 @@ enum RobotState {
 RobotState currentState = CALIBRATING;
 
 // === Path & Distance Storage ===
+// while mapping
 String rawPath = "";
 long pathSegments[100];
 int pathIndex = 0;
 
+//on actual run
 String optimizedPath = "";
 long optimizedSegments[100];
 int optimizedPathLength = 0;
@@ -98,7 +100,7 @@ void setup() {
     pid.setOutputLimits(-BASE_SPEED, BASE_SPEED);
     
     Serial.println("╔════════════════════════════════════════╗");
-    Serial.println("║  Configuration                        ║");
+    Serial.println("║  Configuration                         ║");
     Serial.println("╠════════════════════════════════════════╣");
     Serial.print("║  Kp = ");
     Serial.print(pid.getKp(), 1);
@@ -120,36 +122,46 @@ void setup() {
 }
 
 void loop() {
-    handleWiFiClient();
     
-    // WiFi updates every 200ms
-    if (millis() - lastWiFiUpdate > 200 && client && client.connected()) {
-        bool sensorVals[5];
-        sensors.getSensorArray(sensorVals);
-        
-        client.print("S:[");
-        for (int i = 0; i < 5; i++) {
-            client.print(sensorVals[i] ? "█" : "·");
-        }
-        client.print("] Err:");
-        client.print(sensors.getLineError());
-        client.print(" Out:");
-        client.print((int)pid.getOutput());
-        client.print(" | ");
-        
-        switch(currentState) {
-            case WAIT_FOR_RUN_1: client.print("WAIT_RUN1"); break;
-            case MAPPING: client.print("MAPPING"); break;
-            case OPTIMIZING: client.print("OPTIMIZING"); break;
-            case WAIT_FOR_RUN_2: client.print("WAIT_RUN2"); break;
-            case SOLVING: client.print("SOLVING"); break;
-            case FINISHED: client.print("FINISHED"); break;
-            default: client.print("CALIBRATING");
-        }
-        client.println();
-        
-        lastWiFiUpdate = millis();
-    }
+ // === CRITICAL: Give WiFi time to process ===
+    yield();  // Allow WiFi background tasks
+    
+    handleWiFiClient();
+
+  // === FIXED: Increased update interval and added connection check ===
+  if (millis() - lastWiFiUpdate > 500 && client && client.connected()) {  // Changed 200ms to 500ms
+      
+      // Check if client can receive more data
+      if (client.availableForWrite() > 50) {  // Only send if buffer has space
+          bool sensorVals[5];
+          sensors.getSensorArray(sensorVals);
+          
+          client.print("S:[");
+          for (int i = 0; i < 5; i++) {
+              client.print(sensorVals[i] ? "█" : "·");
+          }
+          client.print("] Err:");
+          client.print(sensors.getLineError());
+          client.print(" Out:");
+          client.print((int)pid.getOutput());
+          client.print(" | ");
+          
+          switch(currentState) {
+              case WAIT_FOR_RUN_1: client.print("WAIT_RUN1"); break;
+              case MAPPING: client.print("MAPPING"); break;
+              case OPTIMIZING: client.print("OPTIMIZING"); break;
+              case WAIT_FOR_RUN_2: client.print("WAIT_RUN2"); break;
+              case SOLVING: client.print("SOLVING"); break;
+              case FINISHED: client.print("FINISHED"); break;
+              default: client.print("CALIBRATING");
+          }
+          client.println();
+          client.flush();  // Force send immediately
+      }
+      
+      lastWiFiUpdate = millis();
+  }
+    
     
     switch (currentState) {
         
@@ -174,64 +186,59 @@ void loop() {
             
         case MAPPING:
         {
-            if (!robotRunning) {
-                motors.stopBrake();
-                break;
+        // Normal line following with PID
+        runPID(BASE_SPEED);
+        
+        // === DETAILED DEBUG OUTPUT ===
+        static unsigned long lastDetailedDebug = 0;
+        if (millis() - lastDetailedDebug > 500) {  // Every 500ms
+            bool vals[5];
+            sensors.getSensorArray(vals);
+            
+            client.print("S:[");
+            for (int i = 0; i < 5; i++) {
+                client.print(vals[i] ? "1" : "0");
+            }
+            client.print("] Raw:");
+            for (int i = 0; i < 5; i++) {
+                client.print(vals[i] ? "T" : "F");
+                client.print(" ");
             }
             
-            // Check for line end FIRST (dead end detection)
-            if (sensors.isLineEnd()) {
-                motors.stopBrake();
-                
-                long segmentTicks = motors.getAverageCount();
-                
-                if (pathIndex >= 100) {
-                    Serial.println("ERROR: Path array full!");
-                    currentState = FINISHED;
-                    break;
-                }
-                
-                Serial.println("→ DEAD END (U-turn)");
-                motors.turn_180_back();
-                rawPath += 'B';
-                
-                pathSegments[pathIndex] = segmentTicks;
-                pathIndex++;
-                motors.clearEncoders();
-                pid.reset();
-                lastJunctionTime = millis();
-                delay(200);
-                break;  // Exit switch to restart loop
-            }
+            int16_t pos = sensors.getPosition();
+            int16_t err = sensors.getLineError();
+            float pidOut = pid.getOutput();
             
-            // Normal line following with PID
-            runPID(BASE_SPEED);
+            client.print("| Pos:");
+            client.print(pos);
+            client.print(" Err:");
+            client.print(err);
+            client.print(" PID:");
+            client.print((int)pidOut);
             
-            // Debug output every 500ms
-            if (millis() - lastDebugPrint > 500) {
-                Serial.print("Err:");
-                Serial.print(sensors.getLineError());
-                Serial.print(" Out:");
-                Serial.print((int)pid.getOutput());
-                Serial.print(" Path:");
-                Serial.print(rawPath);
-                Serial.print("(");
-                Serial.print(pathIndex);
-                Serial.println(")");
-                lastDebugPrint = millis();
-            }
+            // Calculate motor speeds
+            int leftSpeed = BASE_SPEED + (int)pidOut;
+            int rightSpeed = BASE_SPEED - (int)pidOut;
+            
+            client.print(" | L:");
+            client.print(leftSpeed);
+            client.print(" R:");
+            client.print(rightSpeed);
+            client.println();
+            
+            lastDetailedDebug = millis();
+        }
             
             // Check for junction (debounced)
             if (millis() - lastJunctionTime > junctionDebounce) {
                 PathOptions paths = sensors.getAvailablePaths();
                 
-                // Junction detected if we have multiple path options
-                // OR if we only have left OR only right (90° turn)
+                // Junction detected if we only have left OR only right (90° turn)
                 bool isJunction = false;
                 int pathCount = 0;
                 if (paths.left) pathCount++;
-                if (paths.straight) pathCount++;
                 if (paths.right) pathCount++;
+                if(paths.straight) pathCount++;
                 
                 // Junction = more than just straight, OR only left/right (90° turn)
                 if (pathCount > 1 || (pathCount == 1 && !paths.straight)) {
@@ -253,27 +260,24 @@ void loop() {
                     motors.moveForward(TICKS_TO_CENTER);
                     delay(100);
                     
-                    // Re-check paths after centering
-                    paths = sensors.getAvailablePaths();
-                    
                     // LSRB (Left-Straight-Right-Back) Logic
                     if (paths.left) {
-                        Serial.println("→ LEFT");
+                        Serial.println("LEFT");
                         motors.turn_90_left();
                         rawPath += 'L';
                     }
                     else if (paths.straight) {
-                        Serial.println("→ STRAIGHT");
+                        Serial.println("STRAIGHT");
                         rawPath += 'S';
                     }
                     else if (paths.right) {
-                        Serial.println("→ RIGHT");
+                        Serial.println("RIGHT");
                         motors.turn_90_right();
                         rawPath += 'R';
                     }
                     else {
                         // No paths available (shouldn't happen at junction)
-                        Serial.println("→ NO PATH (U-turn)");
+                        Serial.println("NO PATH (U-turn)");
                         motors.turn_180_back();
                         rawPath += 'B';
                     }
@@ -470,12 +474,30 @@ void loop() {
     }
 }
 
+// void runPID(int currentBaseSpeed) {
+//     int16_t error = sensors.getLineError();
+//     float correction = pid.compute(error);
+    
+//     int leftSpeed = currentBaseSpeed - (int)correction;
+//     int rightSpeed = currentBaseSpeed + (int)correction;
+    
+//     motors.setSpeeds(leftSpeed, rightSpeed);
+// }
+
+//runPID() temporarily:
 void runPID(int currentBaseSpeed) {
     int16_t error = sensors.getLineError();
-    float correction = pid.compute(error);
     
-    int leftSpeed = currentBaseSpeed - (int)correction;
-    int rightSpeed = currentBaseSpeed + (int)correction;
+    // DIRECT PID calculation (bypass wrapper for testing)
+    float correction = 45.0 * error;  // Just proportional term for now
+    
+    Serial.print("Direct PID: Err=");
+    Serial.print(error);
+    Serial.print(" Corr=");
+    Serial.println((int)correction);
+    
+    int leftSpeed = currentBaseSpeed + (int)correction;
+    int rightSpeed = currentBaseSpeed - (int)correction;
     
     motors.setSpeeds(leftSpeed, rightSpeed);
 }
@@ -514,22 +536,46 @@ void setupWiFi() {
 }
 
 void handleWiFiClient() {
+    // Add timeout protection
+    static unsigned long lastClientCheck = 0;
+    if (millis() - lastClientCheck < 10) {  // Only check every 10ms
+        return;
+    }
+    lastClientCheck = millis();
+    
+    // Check for new client
     if (server.hasClient()) {
         if (!client || !client.connected()) {
-            if (client) client.stop();
+            if (client) {
+                client.stop();
+                Serial.println("✗ Old client disconnected");
+            }
             client = server.available();
-            Serial.println("✓ WiFi client connected");
-            client.println("\n╔════════════════════════════════════════╗");
-            client.println("║  Mesmerize WiFi Tuning                ║");
-            client.println("╚════════════════════════════════════════╝");
-            printMenu();
+            if (client) {
+                Serial.println("✓ New WiFi client connected");
+                client.setTimeout(100);  // Set 100ms timeout
+                client.println("\n╔════════════════════════════════════════╗");
+                client.println("║  Mesmerize WiFi Tuning                ║");
+                client.println("╚════════════════════════════════════════╝");
+                printMenu();
+            }
         }
     }
     
-    if (client && client.connected() && client.available()) {
-        String command = client.readStringUntil('\n');
-        command.trim();
-        processCommand(command);
+    // Check client status
+    if (client && client.connected()) {
+        // Process available commands
+        while (client.available()) {
+            String command = client.readStringUntil('\n');
+            command.trim();
+            if (command.length() > 0) {
+                processCommand(command);
+            }
+            yield();  // Allow other tasks
+        }
+    } else if (client) {
+        // Client disconnected
+        client.stop();
     }
 }
 

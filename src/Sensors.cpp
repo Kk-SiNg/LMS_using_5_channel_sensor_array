@@ -20,7 +20,7 @@ void Sensors::setup() {
     Serial.println("║  Sensor Calibration                   ║");
     Serial.println("╚════════════════════════════════════════╝");
     Serial.println("5-Channel Digital TCRT5000 Array");
-    Serial.println("Calibrating for 5 seconds...");
+    Serial.println("Calibrating for 2 seconds...");
     
     pinMode(ONBOARD_LED, OUTPUT);
     digitalWrite(ONBOARD_LED, HIGH);
@@ -28,7 +28,7 @@ void Sensors::setup() {
     unsigned long startTime = millis();
     int detectionCount[SensorCount] = {0};
     
-    while (millis() - startTime < 5000) {
+    while (millis() - startTime < 2000) {
         readRaw(sensorValues);
         for (uint8_t i = 0; i < SensorCount; i++) {
             if (sensorValues[i]) detectionCount[i]++;
@@ -55,7 +55,7 @@ void Sensors::setup() {
 }
 
 void Sensors::readRaw(bool* values) {
-    // Digital sensors: HIGH = line detected (black), LOW = no line (white)
+    // Digital sensors: HIGH = line detected (white) and LOW = no line (black)
     values[0] = digitalRead(SENSOR_PIN_1);  // Right-most
     values[1] = digitalRead(SENSOR_PIN_2);
     values[2] = digitalRead(SENSOR_PIN_3);  // Center
@@ -77,7 +77,7 @@ int16_t Sensors::getPosition() {
         }
     }
     
-    // Line recovery: keep last position if all sensors lose line
+    // imp ---> Line recovery: keep last position if all sensors lose line
     if (activeCount > 0) {
         lastPosition = weightedSum / activeCount;
     }
@@ -107,63 +107,20 @@ bool Sensors::onLine() {
 }
 
 PathOptions Sensors::getAvailablePaths() {
-    /*
-     * SIMPLIFIED PATH DETECTION
-     * ========================
-     * 
-     * Check which directions have line visible
-     * Works at T-junctions, cross-junctions, 90° turns
-     * 
-     * Sensor Layout (5 sensors, 2cm spacing):
-     *    S1   S2   S3   S4   S5
-     *   Right     Center     Left
-     * 
-     * Path Detection Logic:
-     * - LEFT path:     S4 OR S5 active (left-most 2 sensors)
-     * - STRAIGHT path: S2 OR S3 OR S4 active (center 3 sensors)
-     * - RIGHT path:    S1 OR S2 active (right-most 2 sensors)
-     * 
-     * Why overlapping sensors?
-     * - 3cm line width with 2cm sensor spacing means sensors overlap coverage
-     * - More reliable detection of available paths
-     * 
-     * Examples:
-     * =========
-     * 
-     * T-Junction (Left + Straight):
-     *     ███████████
-     *         ║
-     *         ║
-     *    [·][█][█][█][·]  ← S2,S3,S4 active
-     *    Result: left=true, straight=true, right=false
-     * 
-     * 90° Right Turn:
-     *         ║
-     *         ║
-     *         ╚═════════
-     *    [█][█][·][·][·]  ← S1,S2 active
-     *    Result: left=false, straight=false, right=true
-     * 
-     * Cross Junction (All paths):
-     *     ═══╬═══
-     *         ║
-     *    [█][█][█][█][█]  ← All sensors active
-     *    Result: left=true, straight=true, right=true
-     */
     
     readRaw(sensorValues);
     
     PathOptions paths;
     
     // LEFT path: Left-most 2 sensors
-    paths.left = (sensorValues[4]);
+    paths.left = (sensorValues[0] && sensorValues[1]);
     
     // STRAIGHT path: Center 3 sensors
     // This is the most important - must detect line ahead
-    paths.straight = (sensorValues[1] || sensorValues[2] || sensorValues[3]);
+    paths.straight = (sensorValues[2]);
     
     // RIGHT path: Right-most 2 sensors
-    paths.right = (sensorValues[0]);
+    paths.right = (sensorValues[3] && sensorValues[4]);
     
     return paths;
 }
@@ -191,14 +148,12 @@ bool Sensors::isLineEnd() {
      *           ▼
      * 
      * At line end:
-     *    [·][·][·][·][·]  ← All sensors see white
+     *    [·][·][·][·][·]  ← All sensors see black
      *    (line has ended)
      * 
      * IMPORTANT:
      * ----------
      * - Returns true when ALL sensors are LOW (no line detected)
-     * - This is the opposite of your original code!
-     * - Original checked for all HIGH (all black) which was wrong
      * 
      * Usage in LSRB:
      * --------------
@@ -208,17 +163,17 @@ bool Sensors::isLineEnd() {
     
     readRaw(sensorValues);
     
-    // Check if ALL sensors see white (no line)
+    // Check if ALL sensors see black (no line)
     for (uint8_t i = 0; i < SensorCount; i++) {
         if (sensorValues[i]) {
             return false;  // Found a sensor that sees line → NOT line end
         }
     }
-    
-    // All sensors see white → LINE END
+    // All sensors see black → LINE END
     return true;
 }
 
+// to provide sensor info to others
 void Sensors::getSensorArray(bool* arr) {
     readRaw(arr);
 }
