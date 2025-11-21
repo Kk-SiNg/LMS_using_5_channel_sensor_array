@@ -113,14 +113,14 @@ PathOptions Sensors::getAvailablePaths() {
     PathOptions paths;
     
     // LEFT path: Left-most 2 sensors
-    paths.left = (sensorValues[0] && sensorValues[1]);
+    paths.left = (sensorValues[0]);
     
     // STRAIGHT path: Center 3 sensors
     // This is the most important - must detect line ahead
     paths.straight = (sensorValues[2]);
     
     // RIGHT path: Right-most 2 sensors
-    paths.right = (sensorValues[3] && sensorValues[4]);
+    paths.right = (sensorValues[4]);
     
     return paths;
 }

@@ -474,34 +474,28 @@ void loop() {
     }
 }
 
-// void runPID(int currentBaseSpeed) {
-//     int16_t error = sensors.getLineError();
-//     float correction = pid.compute(error);
-    
-//     int leftSpeed = currentBaseSpeed - (int)correction;
-//     int rightSpeed = currentBaseSpeed + (int)correction;
-    
-//     motors.setSpeeds(leftSpeed, rightSpeed);
-// }
-
-//runPID() temporarily:
 void runPID(int currentBaseSpeed) {
     int16_t error = sensors.getLineError();
     
-    // DIRECT PID calculation (bypass wrapper for testing)
-    float correction = 45.0 * error;  // Just proportional term for now
+    // Use PIDController wrapper to compute correction
+    float correction = pid.compute(error);  // ← Use the PIDController object
     
-    Serial.print("Direct PID: Err=");
+    // Optional debug (remove after testing):
+
+    Serial.print("PID: Err=");
     Serial.print(error);
     Serial.print(" Corr=");
-    Serial.println((int)correction);
+    Serial.print((int)correction);
+    Serial.print(" | L=");
+    Serial.print(currentBaseSpeed + (int)correction);
+    Serial.print(" R=");
+    Serial.println(currentBaseSpeed - (int)correction);
     
     int leftSpeed = currentBaseSpeed + (int)correction;
     int rightSpeed = currentBaseSpeed - (int)correction;
     
     motors.setSpeeds(leftSpeed, rightSpeed);
 }
-
 // WiFi functions (same as before)
 void setupWiFi() {
     Serial.println("╔════════════════════════════════════════╗");
