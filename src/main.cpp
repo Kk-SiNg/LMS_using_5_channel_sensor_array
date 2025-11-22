@@ -66,7 +66,7 @@ unsigned long lastDebugPrint = 0;
 
 // === Junction Detection Variables ===
 unsigned long lastJunctionTime = 0;
-const unsigned long junctionDebounce = 500;  // 500ms between junctions
+const unsigned long junctionDebounce = 200;  // 500ms between junctions
 
 // === Function Declarations ===
 void setupWiFi();

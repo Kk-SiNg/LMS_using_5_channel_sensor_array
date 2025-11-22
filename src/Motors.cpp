@@ -10,8 +10,8 @@
 int TICKS_FOR_90_DEG = 450;
 int TICKS_FOR_180_DEG = 900;
 int TICKS_TO_CENTER = 120;
-int BASE_SPEED = 180;
-int TURN_SPEED = 160;
+int BASE_SPEED = 150;
+int TURN_SPEED = 190;
 int MAX_SPEED = 220;
 
 Motors::Motors() {}
@@ -97,7 +97,7 @@ void Motors::turn_90_right() {
 
 void Motors::turn_180_back() {
     leftEncoder.clearCount();
-    rightEncoder.clearCount();  
+    rightEncoder.clearCount();
     setSpeeds(TURN_SPEED, -TURN_SPEED);     //pivot from right
     while (leftEncoder.getCount() < TICKS_FOR_180_DEG) delay(1);
     stopBrake();

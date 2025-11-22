@@ -107,20 +107,18 @@ bool Sensors::onLine() {
 }
 
 PathOptions Sensors::getAvailablePaths() {
-    
     readRaw(sensorValues);
     
     PathOptions paths;
     
-    // LEFT path: Left-most 2 sensors
-    paths.left = (sensorValues[0]);
+    // LEFT path: Need BOTH leftmost sensors OR clear left junction pattern
+    paths.left = (sensorValues[0] && sensorValues[1] && sensorValues[2]);
     
-    // STRAIGHT path: Center 3 sensors
-    // This is the most important - must detect line ahead
-    paths.straight = (sensorValues[2]);
+    // STRAIGHT path: Center sensor(s) detect line
+    paths.straight = (sensorValues[2] || sensorValues[1] || sensorValues[3]);
     
-    // RIGHT path: Right-most 2 sensors
-    paths.right = (sensorValues[4]);
+    // RIGHT path: Need BOTH rightmost sensors OR clear right junction pattern
+    paths.right = (sensorValues[2] && sensorValues[3] && sensorValues[4]);
     
     return paths;
 }
