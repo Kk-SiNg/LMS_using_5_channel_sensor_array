@@ -189,108 +189,126 @@ void loop() {
         // Normal line following with PID
         runPID(BASE_SPEED);
         
-        // === DETAILED DEBUG OUTPUT ===
-        static unsigned long lastDetailedDebug = 0;
-        if (millis() - lastDetailedDebug > 500) {  // Every 500ms
-            bool vals[5];
-            sensors.getSensorArray(vals);
+        // // === DETAILED DEBUG OUTPUT ===
+        // static unsigned long lastDetailedDebug = 0;
+        // if (millis() - lastDetailedDebug > 500) {  // Every 500ms
+        //     bool vals[5];
+        //     sensors.getSensorArray(vals);
             
-            client.print("S:[");
-            for (int i = 0; i < 5; i++) {
-                client.print(vals[i] ? "1" : "0");
-            }
-            client.print("] Raw:");
-            for (int i = 0; i < 5; i++) {
-                client.print(vals[i] ? "T" : "F");
-                client.print(" ");
-            }
+        //     client.print("S:[");
+        //     for (int i = 0; i < 5; i++) {
+        //         client.print(vals[i] ? "1" : "0");
+        //     }
+        //     client.print("] Raw:");
+        //     for (int i = 0; i < 5; i++) {
+        //         client.print(vals[i] ? "T" : "F");
+        //         client.print(" ");
+        //     }
             
-            int16_t pos = sensors.getPosition();
-            int16_t err = sensors.getLineError();
-            float pidOut = pid.getOutput();
+        //     int16_t pos = sensors.getPosition();
+        //     int16_t err = sensors.getLineError();
+        //     float pidOut = pid.getOutput();
             
-            client.print("| Pos:");
-            client.print(pos);
-            client.print(" Err:");
-            client.print(err);
-            client.print(" PID:");
-            client.print((int)pidOut);
+        //     client.print("| Pos:");
+        //     client.print(pos);
+        //     client.print(" Err:");
+        //     client.print(err);
+        //     client.print(" PID:");
+        //     client.print((int)pidOut);
             
-            // Calculate motor speeds
-            int leftSpeed = BASE_SPEED + (int)pidOut;
-            int rightSpeed = BASE_SPEED - (int)pidOut;
+        //     // Calculate motor speeds
+        //     int leftSpeed = BASE_SPEED + (int)pidOut;
+        //     int rightSpeed = BASE_SPEED - (int)pidOut;
             
-            client.print(" | L:");
-            client.print(leftSpeed);
-            client.print(" R:");
-            client.print(rightSpeed);
-            client.println();
+        //     client.print(" | L:");
+        //     client.print(leftSpeed);
+        //     client.print(" R:");
+        //     client.print(rightSpeed);
+        //     client.println();
             
-            lastDetailedDebug = millis();
-        }
+        //     lastDetailedDebug = millis();
+        // }
             
             // Check for junction (debounced)
             if (millis() - lastJunctionTime > junctionDebounce) {
                 PathOptions paths = sensors.getAvailablePaths();
                 
-                // Junction detected if we only have left OR only right (90° turn)
-                bool isJunction = false;
+                 // Count available paths
                 int pathCount = 0;
                 if (paths.left) pathCount++;
                 if (paths.right) pathCount++;
-                if(paths.straight) pathCount++;
+                if (paths.straight) pathCount++;
                 
-                // Junction = more than just straight, OR only left/right (90° turn)
+                // Junction = more than 1 path available
                 if (pathCount > 1 || (pathCount == 1 && !paths.straight)) {
-                    isJunction = true;
-                }
-                
-                if (isJunction) {
-                    motors.stopBrake();
+                    // CONFIRM: Check again after small delay
+                    delay(50);  // Move forward 50ms
+                    PathOptions confirmPaths = sensors.getAvailablePaths();
                     
-                    long segmentTicks = motors.getAverageCount();
+                    int confirmCount = 0;
+                    if (confirmPaths.left) confirmCount++;
+                    if (confirmPaths.right) confirmCount++;
                     
-                    if (pathIndex >= 100) {
-                        Serial.println("ERROR: Path array full!");
-                        currentState = FINISHED;
+                    // Only process if still detecting junction
+                    if (confirmCount > 0) {
+                        // Real junction - process it
+                        motors.stopBrake();
+                        long segmentTicks = motors.getAverageCount();
+                    
+                        if (pathIndex >= 100) {
+                            Serial.println("ERROR: Path array full!");
+                            currentState = OPTIMIZING;
+                            break;
+                        }
+                        
+                        // Move to center of junction
+                        motors.moveForward(TICKS_TO_CENTER);
+                        delay(100);
+                        bool values[5]; 
+                        sensors.getSensorArray(values);
+                        
+                        // check for white square
+                        if (sensors.isdeadend()){
+                        currentState = OPTIMIZING;
                         break;
+                        }
+                        //checking for lineends
+                        else if (sensors.isLineEnd()){
+                            motors.turn_180_back();
+                            rawPath += 'B';
+                        }
+                        // LSRB (Left-Straight-Right-Back) Logic
+                        else if (paths.left) {
+                            Serial.println("LEFT");
+                            motors.turn_90_left();
+                            rawPath += 'L';
+                        }
+                        else if (values[2]) {
+                            Serial.println("STRAIGHT");
+                            rawPath += 'S';
+                        }
+                        else if (paths.right) {
+                            Serial.println("RIGHT");
+                            motors.turn_90_right();
+                            rawPath += 'R';
+                        }
+                        else {
+                            // No paths available (shouldn't happen at junction)
+                            Serial.println("NO PATH (U-turn)");
+                            motors.turn_180_back();
+                            rawPath += 'B';
+                        }
+                        
+                        pathSegments[pathIndex] = segmentTicks;
+                        pathIndex++;
+                        motors.clearEncoders();
+                        pid.reset();
+                        lastJunctionTime = millis();
+                        delay(100);
                     }
-                    
-                    // Move to center of junction
-                    motors.moveForward(TICKS_TO_CENTER);
-                    delay(100);
-                    
-                    // LSRB (Left-Straight-Right-Back) Logic
-                    if (paths.left) {
-                        Serial.println("LEFT");
-                        motors.turn_90_left();
-                        rawPath += 'L';
-                    }
-                    else if (paths.straight) {
-                        Serial.println("STRAIGHT");
-                        rawPath += 'S';
-                    }
-                    else if (paths.right) {
-                        Serial.println("RIGHT");
-                        motors.turn_90_right();
-                        rawPath += 'R';
-                    }
-                    else {
-                        // No paths available (shouldn't happen at junction)
-                        Serial.println("NO PATH (U-turn)");
-                        motors.turn_180_back();
-                        rawPath += 'B';
-                    }
-                    
-                    pathSegments[pathIndex] = segmentTicks;
-                    pathIndex++;
-                    motors.clearEncoders();
-                    pid.reset();
-                    lastJunctionTime = millis();
-                    delay(100);
                 }
+
             }
-            
             break;
         }
             
@@ -298,18 +316,22 @@ void loop() {
         {
             motors.stopBrake();
             robotRunning = false;
+            if (client && client.connected()) {
+                client.println("\n╔════════════════════════════════════════╗");
+                client.println("║  Run 1 Complete - Optimizing         ║");
+                client.println("╚════════════════════════════════════════╝");
+                client.print("Raw Path: ");
+                client.print(rawPath);
+                client.print(" (");
+                client.print(rawPath.length());
+                client.println(" moves)");
+            }
             
-            Serial.println("\n╔════════════════════════════════════════╗");
-            Serial.println("║  Run 1 Complete - Optimizing         ║");
-            Serial.println("╚════════════════════════════════════════╝");
-            Serial.print("Raw Path: ");
-            Serial.print(rawPath);
-            Serial.print(" (");
-            Serial.print(rawPath.length());
-            Serial.println(" moves)");
             
             if (rawPath.length() == 0) {
-                Serial.println("ERROR: No path recorded!");
+                if (client && client.connected()) {
+                client.println("ERROR: No path recorded!");
+                }
                 currentState = FINISHED;
                 break;
             }
@@ -326,7 +348,7 @@ void loop() {
             bool changesMade = true;
             int iterations = 0;
             
-            while(changesMade && iterations < 10) {
+            while(changesMade && iterations < 20) {
                 int oldLength = optimizedPathLength;
                 optimizer.optimize(optimizedPath, optimizedSegments, optimizedPathLength);
                 changesMade = (oldLength != optimizedPathLength);
@@ -467,6 +489,7 @@ void loop() {
         case FINISHED:
             digitalWrite(ONBOARD_LED, !digitalRead(ONBOARD_LED));
             delay(200);
+            motors.stopBrake();
             break;
             
         case CALIBRATING:

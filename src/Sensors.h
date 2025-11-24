@@ -28,7 +28,10 @@ public:
     
     // Detect if we've completely lost the line (dead end)
     bool isLineEnd();
-    
+
+    // for finding if we have reached white block
+    bool isdeadend();    
+
     // Read raw sensor values
     void readRaw(bool* values);
     
@@ -37,6 +40,7 @@ public:
     
     // Get sensor array for WiFi monitoring
     void getSensorArray(bool* arr);
+
     
     // Check if currently on a line (any sensor active)
     bool onLine();

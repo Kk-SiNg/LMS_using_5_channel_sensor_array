@@ -171,6 +171,17 @@ bool Sensors::isLineEnd() {
     return true;
 }
 
+bool Sensors::isdeadend(){
+    readRaw(sensorValues);
+
+    for(uint8_t i = 0; i < SensorCount; i++){
+        if (!sensorValues[i]){
+            return false;
+        }
+    }
+    return true;
+}
+
 // to provide sensor info to others
 void Sensors::getSensorArray(bool* arr) {
     readRaw(arr);
